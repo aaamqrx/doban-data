@@ -49,7 +49,6 @@ for d in [DATA_DIR, HTML_DIR, RAW_DIR, FILTERED_DIR, SRC_DIR]:
 COOKIES = {
     "ll": "\"108088\"",
     "bid": "d5-y7eKV_vE",
-    "dbcl2": "\"267396768:LikY5F4ZRoU\"",
     "push_noty_num": "0",
     "push_doumail_num": "0",
     "__utmz": "30149280.1775135882.1.1.utmcsr=accounts.douban.com|utmccn=(referral)|utmcmd=referral|utmcct=/",
@@ -58,16 +57,10 @@ COOKIES = {
     "__utmz": "223695111.1775634918.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)",
     "_vwo_uuid_v2": "DFB79D041033068060DCE0A6C88B576D1|2d5a6f8edf69b80896c69adcf753be13",
     "__yadk_uid": "aPg4kCjsi3PexCQJbKPO2up5pacWFxEp",
-    "ck": "Vq4S",
+    "__utma": "30149280.1995096768.1775135882.1775735784.1775787110.6",
+    "__utma": "223695111.556340732.1775634918.1775735784.1775787110.5",
     "_pk_ses.100001.4cf6": "1",
     "ap_v": "0,6.0",
-    "__utma": "30149280.1995096768.1775135882.1775735784.1775787110.6",
-    "__utmb": "30149280.0.10.1775787110",
-    "__utmc": "30149280",
-    "__utma": "223695111.556340732.1775634918.1775735784.1775787110.5",
-    "__utmb": "223695111.0.10.1775787110",
-    "__utmc": "223695111",
-    "frodotk_db": "\"74f2608d2e8fbf715ed721a78baf3e53\"",
 }
 
 HEADERS = {
