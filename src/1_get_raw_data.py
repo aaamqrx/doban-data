@@ -71,15 +71,19 @@ def fetch_movies_by_type(movie_type, type_id):
 
 
 def deduplicate_movies(movies):
-    """按详情链接去重"""
+    """优先按subject_id去重，缺失时回退按详情链接去重"""
     seen = set()
     unique_movies = []
 
     for movie in movies:
-        url = movie.get("url", "")
-        if not url or url in seen:
+        subject_id = str(movie.get("id", "") or "").strip()
+        url = str(movie.get("url", "") or "").strip()
+        dedupe_key = f"id:{subject_id}" if subject_id else f"url:{url}"
+
+        if dedupe_key in seen or (not subject_id and not url):
             continue
-        seen.add(url)
+
+        seen.add(dedupe_key)
         unique_movies.append(movie)
 
     return unique_movies
@@ -91,7 +95,10 @@ def save_to_excel(movies, output_path):
     for item in movies:
         movie_list.append(
             {
+                "subject_id": item.get("id", ""),
                 "电影名": item.get("title", ""),
+                "评分": item.get("score", ""),
+                "评价人数": item.get("vote_count", ""),
                 "主演": ",".join(item.get("actors", [])),
                 "制片国家/地区": ",".join(item.get("regions", [])),
                 "类型": ",".join(item.get("types", [])),

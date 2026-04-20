@@ -38,7 +38,17 @@ if __name__ == "__main__":
         if "类型" in china_df.columns:
             china_df = china_df.drop(columns=["类型"])
 
-        cols = ["电影名", "主演", "制片国家/地区", "影片类型", "上映时间", "详情链接"]
+        cols = [
+            "subject_id",
+            "电影名",
+            "评分",
+            "评价人数",
+            "主演",
+            "制片国家/地区",
+            "影片类型",
+            "上映时间",
+            "详情链接",
+        ]
         china_df = china_df[[column for column in cols if column in china_df.columns]]
 
         output_path = config.FILTERED_DIR / f"china_{movie_type}.xlsx"

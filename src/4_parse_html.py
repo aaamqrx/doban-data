@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 import re
 import sys
 from pathlib import Path
@@ -17,10 +18,74 @@ def extract_subject_id_from_url(url):
 
 
 
+def normalize_subject_id(value):
+    """规范化subject_id，兼容Excel读取后的数字格式"""
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    match = re.search(r"(\d+)", text)
+    return match.group(1) if match else text
+
+
+
 def extract_subject_id_from_filename(file_name):
     """从HTML文件名中提取豆瓣subject id"""
     match = re.match(r"(\d+)_", file_name)
     return match.group(1) if match else ""
+
+
+
+def load_movie_json_ld(soup):
+    """提取页面中的 Movie JSON-LD 数据"""
+    scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
+    for script in scripts:
+        raw_text = script.string or script.get_text()
+        if not raw_text:
+            continue
+        try:
+            data = json.loads(raw_text.strip())
+        except Exception:
+            continue
+
+        candidates = data if isinstance(data, list) else [data]
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("@type", "")
+            if item_type == "Movie" or (isinstance(item_type, list) and "Movie" in item_type):
+                return item
+
+    return {}
+
+
+
+def extract_person_names(person_data):
+    """从JSON-LD人物字段中提取姓名"""
+    if isinstance(person_data, dict):
+        return person_data.get("name", "")
+    if isinstance(person_data, list):
+        names = [item.get("name", "") for item in person_data if isinstance(item, dict) and item.get("name")]
+        return " / ".join(names)
+    return ""
+
+
+
+def normalize_runtime(runtime_text):
+    """统一片长格式，兼容JSON-LD的ISO8601时长"""
+    text = str(runtime_text or "").strip()
+    if not text:
+        return ""
+
+    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?", text)
+    if not match:
+        return text
+
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    total_minutes = hours * 60 + minutes
+    return f"{total_minutes}分钟" if total_minutes else text
 
 
 
@@ -35,18 +100,51 @@ def extract_movie_info(html_file_path):
     if "禁止访问" in title_text or any(keyword in html_text for keyword in blocked_keywords):
         return None
 
+    movie_json = load_movie_json_ld(soup)
+
     movie_name = title_text if title_text else ""
     movie_name = movie_name.replace(" - 豆瓣电影", "").replace(" (豆瓣)", "").strip()
+    if not movie_name:
+        movie_name = str(movie_json.get("name", "") or "").strip()
 
     director_elem = soup.find("a", attrs={"rel": "v:directedBy"})
-    director = director_elem.get_text(strip=True) if director_elem else "未提取到导演"
+    director = director_elem.get_text(strip=True) if director_elem else ""
+    if not director:
+        director = extract_person_names(movie_json.get("director")) or "未提取到导演"
 
     runtime_elem = soup.find("span", attrs={"property": "v:runtime"})
-    runtime = runtime_elem.get_text(strip=True) if runtime_elem else "未提取到片长"
+    runtime = runtime_elem.get_text(strip=True) if runtime_elem else ""
+    if not runtime:
+        runtime = normalize_runtime(movie_json.get("duration")) or "未提取到片长"
+
+    summary_elem = soup.find("span", attrs={"property": "v:summary"})
+    summary = ""
+    if summary_elem:
+        summary = " ".join(summary_elem.get_text(" ", strip=True).split())
+    if not summary:
+        summary = " ".join(str(movie_json.get("description", "") or "").split())
+
+    info_div = soup.find("div", id="info")
+    imdb_id = ""
+    if info_div:
+        info_text = info_div.get_text("\n", strip=True)
+        imdb_match = re.search(r"IMDb:\s*([A-Za-z]{2}\d+|tt\d+)", info_text, re.IGNORECASE)
+        if imdb_match:
+            imdb_id = imdb_match.group(1)
 
     subject_id = extract_subject_id_from_filename(html_file_path.name)
+    if not subject_id:
+        url_value = str(movie_json.get("url", "") or "")
+        subject_id = extract_subject_id_from_url(url_value)
 
-    return {"subject_id": subject_id, "电影名": movie_name, "导演": director, "片长": runtime}
+    return {
+        "subject_id": subject_id,
+        "电影名": movie_name,
+        "导演": director,
+        "片长": runtime,
+        "剧情简介": summary,
+        "IMDb编号": imdb_id,
+    }
 
 
 if __name__ == "__main__":
@@ -89,7 +187,11 @@ if __name__ == "__main__":
         if excel_file.name == "china_all.xlsx":
             continue
         df = pd.read_excel(excel_file)
-        df["subject_id"] = df["详情链接"].apply(extract_subject_id_from_url)
+        if "subject_id" not in df.columns:
+            df["subject_id"] = ""
+        df["subject_id"] = df["subject_id"].apply(normalize_subject_id)
+        missing_subject_mask = df["subject_id"] == ""
+        df.loc[missing_subject_mask, "subject_id"] = df.loc[missing_subject_mask, "详情链接"].apply(extract_subject_id_from_url)
         excel_dfs.append(df)
 
     df_base = pd.concat(excel_dfs, ignore_index=True) if excel_dfs else pd.DataFrame()
@@ -102,7 +204,7 @@ if __name__ == "__main__":
 
         merged_with_id = pd.merge(
             base_with_id,
-            parsed_with_id[["subject_id", "影片类型", "导演", "片长"]],
+            parsed_with_id[["subject_id", "影片类型", "导演", "片长", "剧情简介", "IMDb编号"]],
             on=["subject_id", "影片类型"],
             how="left",
         )
@@ -110,7 +212,7 @@ if __name__ == "__main__":
         parsed_name_fallback = df_parsed.drop_duplicates(subset=["电影名", "影片类型"]).copy()
         merged_without_id = pd.merge(
             base_without_id,
-            parsed_name_fallback[["电影名", "影片类型", "导演", "片长"]],
+            parsed_name_fallback[["电影名", "影片类型", "导演", "片长", "剧情简介", "IMDb编号"]],
             on=["电影名", "影片类型"],
             how="left",
         )
@@ -118,10 +220,9 @@ if __name__ == "__main__":
         df_final = pd.concat([merged_with_id, merged_without_id], ignore_index=True)
     else:
         df_final = df_base.copy()
-        if "导演" not in df_final.columns:
-            df_final["导演"] = pd.NA
-        if "片长" not in df_final.columns:
-            df_final["片长"] = pd.NA
+        for column in ["导演", "片长", "剧情简介", "IMDb编号"]:
+            if column not in df_final.columns:
+                df_final[column] = pd.NA
 
     output_path = config.FILTERED_DIR / "china_all.xlsx"
     df_final.to_excel(output_path, index=False)

@@ -1,11 +1,35 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 
-# 豆瓣电影类型配置
+# 豆瓣电影类型配置（type_id已全部补全）
 MOVIE_TYPES = {
-    "comedy": {"type_id": 24, "name": "喜剧"},
+    "documentary": {"type_id": 1, "name": "纪录片"},
+    "biography": {"type_id": 2, "name": "传记"},
+    "crime": {"type_id": 3, "name": "犯罪"},
+    "history": {"type_id": 4, "name": "历史"},
     "action": {"type_id": 5, "name": "动作"},
+    "erotic": {"type_id": 6, "name": "情色"},
+    "musical": {"type_id": 7, "name": "歌舞"},
+    "children": {"type_id": 8, "name": "儿童"},
+    "drama": {"type_id": 11, "name": "剧情"},
+    "disaster": {"type_id": 12, "name": "灾难"},
     "romance": {"type_id": 13, "name": "爱情"},
+    "music": {"type_id": 14, "name": "音乐"},
+    "adventure": {"type_id": 15, "name": "冒险"},
+    "fantasy": {"type_id": 16, "name": "奇幻"},
+    "scifi": {"type_id": 17, "name": "科幻"},
+    "sports": {"type_id": 18, "name": "运动"},
+    "thriller": {"type_id": 19, "name": "惊悚"},
+    "horror": {"type_id": 20, "name": "恐怖"},
+    "war": {"type_id": 22, "name": "战争"},
+    "short": {"type_id": 23, "name": "短片"},
+    "comedy": {"type_id": 24, "name": "喜剧"},
+    "western": {"type_id": 27, "name": "西部"},
+    "family": {"type_id": 28, "name": "家庭"},
+    "wuxia": {"type_id": 29, "name": "武侠"},
+    "costume": {"type_id": 30, "name": "古装"},
+    "noir": {"type_id": 31, "name": "黑色电影"},
+    "suspense": {"type_id": 10, "name": "悬疑"},
 }
 
 # 中国地区关键词（包含大陆、香港、台湾）

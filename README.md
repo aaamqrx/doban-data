@@ -79,7 +79,10 @@ movie_prediction_data/
 
 原始输出字段：
 
+- `subject_id`
 - 电影名
+- `评分`
+- `评价人数`
 - 主演
 - 制片国家/地区
 - 类型
@@ -104,7 +107,8 @@ movie_prediction_data/
 
 - 读取 `data/filtered/china_*.xlsx`
 - 根据 `详情链接` 下载电影详情页
-- 从链接中提取 `subject_id`
+- 优先使用表内已有的 `subject_id`
+- 仅在 `subject_id` 缺失时才从链接中兜底提取
 - 缓存到 `html_cache/<类型>/`
 - 文件名优先保存为 `subject_id_电影名.html`
 - 自动跳过已下载文件，支持断点续传
@@ -117,9 +121,10 @@ movie_prediction_data/
 功能：
 
 - 遍历 `html_cache/` 下全部 HTML 文件
-- 解析 `电影名`、`导演`、`片长`
+- 解析 `电影名`、`导演`、`片长`、`剧情简介`、`IMDb编号`
 - 从 HTML 文件名中提取 `subject_id`
-- 从基础表 `详情链接` 中提取 `subject_id`
+- 优先直接使用基础表已有的 `subject_id`
+- 仅在 `subject_id` 缺失时从 `详情链接` 兜底提取
 - 优先按 `subject_id + 影片类型` 合并
 - 输出最终总表 `data/filtered/china_all.xlsx`
 
@@ -164,15 +169,19 @@ python src/4_parse_html.py
 ### 4. 最终总表字段
 `china_all.xlsx` 主要包含：
 
+- `subject_id`
 - 电影名
+- `评分`
+- `评价人数`
 - 主演
 - 制片国家/地区
 - 影片类型
 - 上映时间
 - 详情链接
-- `subject_id`
 - 导演
 - 片长
+- `剧情简介`
+- `IMDb编号`
 
 ---
 

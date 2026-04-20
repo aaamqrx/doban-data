@@ -30,9 +30,20 @@ def extract_subject_id(url):
     return match.group(1) if match else ""
 
 
-def find_existing_html(type_dir, movie_name, url):
+def normalize_subject_id(value):
+    """规范化subject_id，兼容Excel读取后的数字格式"""
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    match = re.search(r"(\d+)", text)
+    return match.group(1) if match else text
+
+
+def find_existing_html(type_dir, movie_name, url, subject_id=""):
     """查找已存在的HTML，确保断点续传判断和命名规则一致"""
-    subject_id = extract_subject_id(url)
+    subject_id = normalize_subject_id(subject_id) or extract_subject_id(url)
     if subject_id:
         matches = sorted(type_dir.glob(f"{subject_id}_*.html"))
         if matches:
@@ -50,10 +61,10 @@ def find_existing_html(type_dir, movie_name, url):
     return None
 
 
-def build_html_path(type_dir, movie_name, url):
+def build_html_path(type_dir, movie_name, url, subject_id=""):
     """生成稳定的HTML保存路径"""
     safe_name = sanitize_filename(str(movie_name)) or "untitled"
-    subject_id = extract_subject_id(url)
+    subject_id = normalize_subject_id(subject_id) or extract_subject_id(url)
 
     if subject_id:
         return type_dir / f"{subject_id}_{safe_name}.html"
@@ -105,21 +116,24 @@ def classify_html_page(html_text):
 
     soup = BeautifulSoup(html_text, "html.parser")
     title = soup.title.get_text(strip=True) if soup.title else ""
-    if "禁止访问" in title:
+    if "禁止访问" in title or "访问受限" in title:
         return "blocked", f"页面标题异常：{title[:30]}"
     if "豆瓣" not in title:
         return "invalid", f"页面标题异常：{title[:30] or '无标题'}"
 
-    has_movie_info = (
+    has_movie_signals = (
         soup.find("div", id="info")
         or soup.find("a", attrs={"rel": "v:directedBy"})
         or soup.find("span", attrs={"property": "v:runtime"})
         or soup.find("span", property="v:itemreviewed")
+        or soup.find("script", attrs={"type": "application/ld+json"})
+        or soup.find("meta", attrs={"property": "og:title"})
+        or soup.find("meta", attrs={"name": "description"})
     )
-    if not has_movie_info:
-        return "invalid", "缺少电影详情结构"
+    if has_movie_signals:
+        return "valid", ""
 
-    return "valid", ""
+    return "valid", "页面结构较简化，按正常电影页保存"
 
 
 def sleep_normal_delay():
@@ -190,7 +204,8 @@ if __name__ == "__main__":
         for idx, row in df.iterrows():
             movie_name = row["电影名"]
             url = row["详情链接"]
-            existing_html = find_existing_html(type_dir, movie_name, url)
+            subject_id = normalize_subject_id(row.get("subject_id", "") if hasattr(row, "get") else "")
+            existing_html = find_existing_html(type_dir, movie_name, url, subject_id)
 
             if existing_html is not None:
                 print(f"⏩ [{idx + 1}/{len(df)}] 已存在，跳过：{movie_name} -> {existing_html.name}")
@@ -200,7 +215,7 @@ if __name__ == "__main__":
             if idx > 0 and idx % config.BATCH_SIZE == 0:
                 sleep_batch_pause()
 
-            html_path = build_html_path(type_dir, movie_name, url)
+            html_path = build_html_path(type_dir, movie_name, url, subject_id)
 
             try:
                 print(f"🔍 [{idx + 1}/{len(df)}] 正在请求：{movie_name}")
