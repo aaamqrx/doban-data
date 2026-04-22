@@ -41,10 +41,25 @@ def normalize_subject_id(value):
     return match.group(1) if match else text
 
 
-def find_existing_html(type_dir, movie_name, url, subject_id=""):
+def build_global_subject_index():
+    """扫描整个 html_cache，建立 subject_id 到已下载HTML路径的全局索引"""
+    subject_index = {}
+    for html_file in config.HTML_DIR.glob("**/*.html"):
+        match = re.match(r"(\d+)_", html_file.name)
+        if not match:
+            continue
+        subject_id = match.group(1)
+        subject_index.setdefault(subject_id, html_file)
+    return subject_index
+
+
+
+def find_existing_html(type_dir, movie_name, url, subject_id="", global_subject_index=None):
     """查找已存在的HTML，确保断点续传判断和命名规则一致"""
     subject_id = normalize_subject_id(subject_id) or extract_subject_id(url)
     if subject_id:
+        if global_subject_index and subject_id in global_subject_index:
+            return global_subject_index[subject_id]
         matches = sorted(type_dir.glob(f"{subject_id}_*.html"))
         if matches:
             return matches[0]
@@ -175,12 +190,20 @@ def fetch_movie_html(session, movie_name, url):
     return "invalid", "", "未知页面状态"
 
 
+def is_blocked_request_exception(error):
+    """判断请求异常是否属于豆瓣风控拦截"""
+    error_text = str(error).lower()
+    blocked_markers = ["sec.douban.com", "max retries exceeded"]
+    return any(marker in error_text for marker in blocked_markers)
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("第3步：下载电影详情页HTML")
     print("=" * 50)
 
     session = create_session()
+    global_subject_index = build_global_subject_index()
 
     for excel_file in config.FILTERED_DIR.glob("china_*.xlsx"):
         movie_type = excel_file.stem.replace("china_", "")
@@ -205,7 +228,13 @@ if __name__ == "__main__":
             movie_name = row["电影名"]
             url = row["详情链接"]
             subject_id = normalize_subject_id(row.get("subject_id", "") if hasattr(row, "get") else "")
-            existing_html = find_existing_html(type_dir, movie_name, url, subject_id)
+            existing_html = find_existing_html(
+                type_dir,
+                movie_name,
+                url,
+                subject_id,
+                global_subject_index=global_subject_index,
+            )
 
             if existing_html is not None:
                 print(f"⏩ [{idx + 1}/{len(df)}] 已存在，跳过：{movie_name} -> {existing_html.name}")
@@ -225,6 +254,9 @@ if __name__ == "__main__":
                 if page_type == "valid":
                     with open(html_path, "w", encoding="utf-8") as f:
                         f.write(html_text)
+
+                    if subject_id:
+                        global_subject_index[subject_id] = html_path
 
                     print(f"✅ [{idx + 1}/{len(df)}] 下载成功：{movie_name} -> {html_path.name}")
                     success_count += 1
@@ -246,9 +278,22 @@ if __name__ == "__main__":
                     consecutive_blocked = 0
 
             except Exception as e:
-                print(f"❌ [{idx + 1}/{len(df)}] 下载失败：{movie_name} - {str(e)[:80]}")
-                fail_count += 1
-                consecutive_blocked = 0
+                if is_blocked_request_exception(e):
+                    reason = str(e)[:120]
+                    print(f"❌ [{idx + 1}/{len(df)}] 请求命中风控：{movie_name} - {reason}")
+                    fail_count += 1
+                    blocked_count += 1
+                    consecutive_blocked += 1
+
+                    if consecutive_blocked >= config.STOP_BLOCKED_THRESHOLD:
+                        print("🛑 连续多次命中风控，建议更新 Cookie 后再继续运行。")
+                        break
+                    if consecutive_blocked >= config.BLOCKED_THRESHOLD:
+                        sleep_block_pause()
+                else:
+                    print(f"❌ [{idx + 1}/{len(df)}] 下载失败：{movie_name} - {str(e)[:80]}")
+                    fail_count += 1
+                    consecutive_blocked = 0
 
             sleep_normal_delay()
 
