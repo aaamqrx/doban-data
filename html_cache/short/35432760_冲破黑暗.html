@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>豆瓣</title>
+    <style type="text/css">
+        body{font-family:Arial,Helvetica,sans-serif;font-size:14px;}
+       .loading {
+         text-align: center;
+         margin-top: 20em;
+         animation: blink 1.5s infinite;
+       }
+
+       @keyframes blink {
+         0%, 100% { opacity: 1; }
+         50% { opacity: 0.3; }
+       }
+    </style>
+</head>
+<body>
+    <div>
+        <div style="margin:20px auto;">
+            <div style="font-size:25px;color:#1b9336;border-bottom:5px solid #eef9eb">
+                <span style="font-size:20px;font-weight:bold">豆瓣</span> d<span style="color:#0092c8">o</span><span style="color:#ffad68">u</span><span>b</span><span style="color:#0092c8">a</span><span style="color:#ffad68">n</span>
+            </div>
+            <p class="loading">载入中 ...</p>
+            <form name="sec" id="sec" method="POST" action="/c">
+              <input type="hidden" id="tok" name="tok" value="1776837146@cc98711f75d9604fb9a0bb6c7bd92c2c48e097a3efd3e7d344f4c6eb2b4e5428ce334ba45df3f055727c40ee4cca48a9d06d83dc0be7b7180281c091352aa219@aHR0cHM6Ly9tb3ZpZS5kb3ViYW4uY29tL3N1YmplY3QvMzU0MzI3NjAv@bced066a0c2ba546286e077b4bac47a658c144d887031c56f44020337e59a657" />
+              <input type="hidden" id="cha" name="cha" value="c72c086ef04eeebdfe9524526f5da8a6997009d09101012267911c484f9fe18b43e64ee6b58132b5142a5f89bdd441320967f54cf2ba75d00498b712f0d83f62" />
+              <input type="hidden" id="sol" name="sol" value="" />
+              <input type="hidden" id="red" name="red" value="https://movie.douban.com/subject/35432760/">
+            </form>
+        </div>
+    </div>
+</body>
+<script>
+
+function sha512(string) {
+    return new Promise((resolve, reject) => {
+        let buffer = (new TextEncoder).encode(string);
+
+        crypto.subtle.digest('SHA-512', buffer.buffer).then(result => {
+            resolve(Array.from(new Uint8Array(result)).map(
+                c => c.toString(16).padStart(2, '0')
+            ).join(''));
+        }, reject);
+    });
+}
+
+async function process(data, difficulty = 4) {
+    let hash;
+    let nonce = 0;
+    const targetSubStr = Array(difficulty+1).join('0');
+
+    do {
+        nonce += 1;
+        hash = await sha512(data + nonce);
+    } while(hash.substr(0, difficulty) !== targetSubStr);
+    return nonce;
+}
+
+async function run(e) {
+    e.preventDefault();
+    const tok = document.querySelector("#tok").value;
+    const cha = document.querySelector("#cha").value;
+    let f = document.querySelector("#sol");
+    let s = await process(cha);
+    f.value = s;
+    e.target.submit();
+}
+
+window.addEventListener("load", function chk(e) {
+    const sub = document.querySelector("#sec");
+    sub.addEventListener("submit", run);
+    setTimeout(() => { sub.requestSubmit(); }, 500);
+})
+</script>
+</html>
+

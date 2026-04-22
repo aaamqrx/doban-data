@@ -30,7 +30,7 @@
 - **评分区间完整遍历**：第 1 步会自动遍历 `100:90` 到 `10:0`
 - **支持断点续传**：第 3 步遇到已下载 HTML 会自动跳过
 - **HTML 命名更稳定**：优先使用 `subject_id_电影名.html`
-- **合并更准确**：第 4 步优先按 `subject_id + 影片类型` 合并
+- **合并更准确**：第 4 步优先按 `subject_id` 合并，可复用同一电影在多个类型中的 HTML 解析结果
 - **适合后续分析**：最终输出为结构化 Excel 数据表
 
 ---
@@ -125,7 +125,7 @@ movie_prediction_data/
 - 从 HTML 文件名中提取 `subject_id`
 - 优先直接使用基础表已有的 `subject_id`
 - 仅在 `subject_id` 缺失时从 `详情链接` 兜底提取
-- 优先按 `subject_id + 影片类型` 合并
+- 优先按 `subject_id` 合并，同一部电影可在多个类型中复用同一份 HTML 解析结果
 - 输出最终总表 `data/filtered/china_all.xlsx`
 
 ---

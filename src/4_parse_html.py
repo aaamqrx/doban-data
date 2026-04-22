@@ -171,7 +171,6 @@ if __name__ == "__main__":
                 if info is None:
                     print(f"  ⏩ 跳过无效HTML：{html_file.name}")
                     continue
-                info["影片类型"] = type_name
                 parsed_data.append(info)
 
                 if idx % 100 == 0:
@@ -199,21 +198,23 @@ if __name__ == "__main__":
 
     if not df_base.empty and not df_parsed.empty:
         parsed_with_id = df_parsed[df_parsed["subject_id"] != ""].copy()
+        parsed_with_id = parsed_with_id.drop_duplicates(subset=["subject_id"])
+
         base_with_id = df_base[df_base["subject_id"] != ""].copy()
         base_without_id = df_base[df_base["subject_id"] == ""].copy()
 
         merged_with_id = pd.merge(
             base_with_id,
-            parsed_with_id[["subject_id", "影片类型", "导演", "片长", "剧情简介", "IMDb编号"]],
-            on=["subject_id", "影片类型"],
+            parsed_with_id[["subject_id", "导演", "片长", "剧情简介", "IMDb编号"]],
+            on=["subject_id"],
             how="left",
         )
 
-        parsed_name_fallback = df_parsed.drop_duplicates(subset=["电影名", "影片类型"]).copy()
+        parsed_name_fallback = df_parsed.drop_duplicates(subset=["电影名"]).copy()
         merged_without_id = pd.merge(
             base_without_id,
-            parsed_name_fallback[["电影名", "影片类型", "导演", "片长", "剧情简介", "IMDb编号"]],
-            on=["电影名", "影片类型"],
+            parsed_name_fallback[["电影名", "导演", "片长", "剧情简介", "IMDb编号"]],
+            on=["电影名"],
             how="left",
         )
 

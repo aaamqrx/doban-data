@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>豆瓣</title>
+    <style type="text/css">
+        body{font-family:Arial,Helvetica,sans-serif;font-size:14px;}
+       .loading {
+         text-align: center;
+         margin-top: 20em;
+         animation: blink 1.5s infinite;
+       }
+
+       @keyframes blink {
+         0%, 100% { opacity: 1; }
+         50% { opacity: 0.3; }
+       }
+    </style>
+</head>
+<body>
+    <div>
+        <div style="margin:20px auto;">
+            <div style="font-size:25px;color:#1b9336;border-bottom:5px solid #eef9eb">
+                <span style="font-size:20px;font-weight:bold">豆瓣</span> d<span style="color:#0092c8">o</span><span style="color:#ffad68">u</span><span>b</span><span style="color:#0092c8">a</span><span style="color:#ffad68">n</span>
+            </div>
+            <p class="loading">载入中 ...</p>
+            <form name="sec" id="sec" method="POST" action="/c">
+              <input type="hidden" id="tok" name="tok" value="1776837348@458db56b4505f3d29df72880e6b375f9bd3ad31804fc7beea6dadeffe2ebd9d8a9dbbabeecdfc5f3260d45df6f210702e4107de043412cf4f56a7a234f02bc89@aHR0cHM6Ly9tb3ZpZS5kb3ViYW4uY29tL3N1YmplY3QvMTQwMTIyMS8=@bced066a0c2ba546286e077b4bac47a658c144d887031c56f44020337e59a657" />
+              <input type="hidden" id="cha" name="cha" value="846b8396961ea906c0a3f8abc80ce2ab74a0e7f09f1e281ebae356baa14d2581bf32e2383f38414c71bec5465295fbee2f18aa15c3aec056e215b46fb3cd2351" />
+              <input type="hidden" id="sol" name="sol" value="" />
+              <input type="hidden" id="red" name="red" value="https://movie.douban.com/subject/1401221/">
+            </form>
+        </div>
+    </div>
+</body>
+<script>
+
+function sha512(string) {
+    return new Promise((resolve, reject) => {
+        let buffer = (new TextEncoder).encode(string);
+
+        crypto.subtle.digest('SHA-512', buffer.buffer).then(result => {
+            resolve(Array.from(new Uint8Array(result)).map(
+                c => c.toString(16).padStart(2, '0')
+            ).join(''));
+        }, reject);
+    });
+}
+
+async function process(data, difficulty = 4) {
+    let hash;
+    let nonce = 0;
+    const targetSubStr = Array(difficulty+1).join('0');
+
+    do {
+        nonce += 1;
+        hash = await sha512(data + nonce);
+    } while(hash.substr(0, difficulty) !== targetSubStr);
+    return nonce;
+}
+
+async function run(e) {
+    e.preventDefault();
+    const tok = document.querySelector("#tok").value;
+    const cha = document.querySelector("#cha").value;
+    let f = document.querySelector("#sol");
+    let s = await process(cha);
+    f.value = s;
+    e.target.submit();
+}
+
+window.addEventListener("load", function chk(e) {
+    const sub = document.querySelector("#sec");
+    sub.addEventListener("submit", run);
+    setTimeout(() => { sub.requestSubmit(); }, 500);
+})
+</script>
+</html>
+
