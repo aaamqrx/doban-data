@@ -96,6 +96,8 @@ movie_prediction_data/
 
 - 读取 `data/raw/*.xlsx`
 - 根据 `制片国家/地区` 筛选中国地区电影（大陆 / 香港 / 台湾）
+- 基于 `上映时间` 生成 `是否春节档 / 是否国庆档 / 是否五一档 / 是否暑期档 / 是否普通周末`
+- 采用 `chinesecalendar` + 向前侦测 3 天识别节前抢跑影片
 - 增加 `影片类型` 列
 - 删除原始 `类型` 列，避免语义重复
 - 输出到 `data/filtered/china_*.xlsx`
@@ -177,6 +179,11 @@ python src/4_parse_html.py
 - 制片国家/地区
 - 影片类型
 - 上映时间
+- `是否春节档`
+- `是否国庆档`
+- `是否五一档`
+- `是否暑期档`
+- `是否普通周末`
 - 详情链接
 - 导演
 - 片长
@@ -219,11 +226,12 @@ MOVIE_TYPES = {
 - pandas
 - openpyxl
 - beautifulsoup4
+- chinesecalendar
 
 安装命令：
 
 ```bash
-pip install requests pandas openpyxl beautifulsoup4
+pip install requests pandas openpyxl beautifulsoup4 chinesecalendar
 ```
 
 ---
