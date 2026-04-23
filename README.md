@@ -53,7 +53,8 @@ movie_prediction_data/
 │
 ├── data/
 │   ├── raw/
-│   └── filtered/
+│   ├── filtered/
+│   └── final/
 │
 ├── html_cache/
 │
@@ -128,7 +129,7 @@ movie_prediction_data/
 - 优先直接使用基础表已有的 `subject_id`
 - 仅在 `subject_id` 缺失时从 `详情链接` 兜底提取
 - 优先按 `subject_id` 合并，同一部电影可在多个类型中复用同一份 HTML 解析结果
-- 输出最终总表 `data/filtered/china_all.xlsx`
+- 输出最终总表 `data/final/china_all.xlsx`
 
 ---
 
@@ -160,9 +161,13 @@ python src/4_parse_html.py
 - `china_comedy.xlsx`
 - `china_action.xlsx`
 - `china_romance.xlsx`
+
+### 3. 最终总表目录 `data/final/`
+示例：
+
 - `china_all.xlsx`
 
-### 3. HTML 缓存目录 `html_cache/`
+### 4. HTML 缓存目录 `html_cache/`
 示例：
 
 - `html_cache/comedy/34950184_困兽.html`
@@ -231,6 +236,12 @@ MOVIE_TYPES = {
 安装命令：
 
 ```bash
+pip install -r requirements.txt
+```
+
+如果你只想手动安装，也可以执行：
+
+```bash
 pip install requests pandas openpyxl beautifulsoup4 chinesecalendar
 ```
 
@@ -248,7 +259,7 @@ pip install requests pandas openpyxl beautifulsoup4 chinesecalendar
    第 2 步当前不再只保留大陆电影，而是会保留 `中国大陆`、`中国香港`、`中国台湾` 相关影片。
 
 4. **运行时不要打开输出 Excel**  
-   如果 `data/raw/` 或 `data/filtered/` 中的 Excel 文件正在被本地程序占用，写入可能失败。
+   如果 `data/raw/`、`data/filtered/` 或 `data/final/` 中的 Excel 文件正在被本地程序占用，写入可能失败。
 
 5. **HTML 下载耗时较长**  
    第 3 步包含随机延时、批次暂停和风控退避重试，耗时较长属于正常现象。

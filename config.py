@@ -63,28 +63,34 @@ DATA_DIR = BASE_DIR / "data"
 HTML_DIR = BASE_DIR / "html_cache"
 RAW_DIR = DATA_DIR / "raw"
 FILTERED_DIR = DATA_DIR / "filtered"
+FINAL_DIR = DATA_DIR / "final"
 SRC_DIR = BASE_DIR / "src"
 
 # 确保目录存在
-for d in [DATA_DIR, HTML_DIR, RAW_DIR, FILTERED_DIR, SRC_DIR]:
+for d in [DATA_DIR, HTML_DIR, RAW_DIR, FILTERED_DIR, FINAL_DIR, SRC_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Cookie配置（需定期更新）
 COOKIES = {
-    "ll": "\"108088\"",
-    "bid": "d5-y7eKV_vE",
+    "bid": "a1yHC4aayTs",
+    "_pk_id.100001.4cf6": "df41304922613660.1775634952.",
+    "ll": "118172",
+    "__yadk_uid": "7gQtuuk687gJZw8mg0sg9cGWTyzQoAPA",
+    "_vwo_uuid_v2": "D0B6E805B637BA894C5D783068C4FA7B9|e80f47eca6ece73fe02aed573033e635",
+    "__utmz": "30149280.1776921303.11.10.utmcsr=cn.bing.com|utmccn=(referral)|utmcmd=referral|utmcct=/",
+    "__utmc": "223695111",
     "push_noty_num": "0",
     "push_doumail_num": "0",
-    "__utmz": "30149280.1775135882.1.1.utmcsr=accounts.douban.com|utmccn=(referral)|utmcmd=referral|utmcct=/",
-    "__utmv": "30149280.26739",
-    "_pk_id.100001.4cf6": "f09015deaff7fc27.1775634915.",
-    "__utmz": "223695111.1775634918.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)",
-    "_vwo_uuid_v2": "DFB79D041033068060DCE0A6C88B576D1|2d5a6f8edf69b80896c69adcf753be13",
-    "__yadk_uid": "aPg4kCjsi3PexCQJbKPO2up5pacWFxEp",
-    "__utmc": "30149280",
-    "__utmc": "223695111",
-    "__utma": "30149280.1995096768.1775135882.1776744263.1776784718.12",
-    "__utma": "223695111.556340732.1775634918.1776744263.1776784718.11",
+    "ap_v": "0,6.0",
+    "_pk_ref.100001.4cf6": "%5B%22%22%2C%22%22%2C1776951404%2C%22https%3A%2F%2Fsec.douban.com%2F%22%5D",
+    "_pk_ses.100001.4cf6": "1",
+    "__utma": "223695111.1953892667.1775634957.1776744242.1776951404.11",
+    "__utmb": "223695111.0.10.1776951404",
+    "dbcl2": "294776582:P1LY2fevSBc",
+    "ck": "lfkA",
+    "frodotk_db": "ef9dffe09308f914ced9ffa1b91aeb3c",
+    "__utmt": "1",
+    "__utmv": "30149280.29477",
 }
 
 HEADERS = {

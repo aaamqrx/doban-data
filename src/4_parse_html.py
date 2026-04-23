@@ -91,8 +91,13 @@ def normalize_runtime(runtime_text):
 
 def extract_movie_info(html_file_path):
     """从HTML提取电影信息"""
+    if not html_file_path.exists() or html_file_path.stat().st_size == 0:
+        return None
+
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_text = f.read()
+        if not html_text or not html_text.strip():
+            return None
         soup = BeautifulSoup(html_text, "html.parser")
 
     blocked_keywords = ["禁止访问", "异常请求", "验证码", "登录豆瓣"]
@@ -183,8 +188,6 @@ if __name__ == "__main__":
 
     excel_dfs = []
     for excel_file in config.FILTERED_DIR.glob("china_*.xlsx"):
-        if excel_file.name == "china_all.xlsx":
-            continue
         df = pd.read_excel(excel_file)
         if "subject_id" not in df.columns:
             df["subject_id"] = ""
@@ -225,7 +228,7 @@ if __name__ == "__main__":
             if column not in df_final.columns:
                 df_final[column] = pd.NA
 
-    output_path = config.FILTERED_DIR / "china_all.xlsx"
+    output_path = config.FINAL_DIR / "china_all.xlsx"
     df_final.to_excel(output_path, index=False)
 
     print(f"\n🎉 完成！最终数据 {len(df_final)} 条")
