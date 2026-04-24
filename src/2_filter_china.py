@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import re
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -9,6 +8,8 @@ import config
 
 import chinese_calendar as calendar
 import pandas as pd
+
+from src.utils_dates import parse_release_date
 
 try:
     from lunardate import LunarDate
@@ -26,25 +27,6 @@ def is_china_movie(regions):
         return False
     regions_str = str(regions)
     return any(keyword in regions_str for keyword in config.CHINA_KEYWORDS)
-
-
-def parse_release_date(release_date):
-    """从上映时间中提取首个有效日期"""
-    if pd.isna(release_date):
-        return None
-
-    text = str(release_date).strip()
-    if not text:
-        return None
-
-    match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-    if not match:
-        return None
-
-    try:
-        return datetime.strptime(match.group(1), "%Y-%m-%d").date()
-    except ValueError:
-        return None
 
 
 def matches_holiday_window(release_day, holiday_names):

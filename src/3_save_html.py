@@ -90,12 +90,37 @@ def build_global_subject_index():
 
 
 
+def get_indexed_html_paths(global_subject_index, subject_id):
+    """兼容 subject_id -> Path 和 subject_id -> [Path, ...] 两种索引结构"""
+    if not global_subject_index or not subject_id:
+        return []
+
+    cached_paths = global_subject_index.get(subject_id, [])
+    if isinstance(cached_paths, Path):
+        return [cached_paths]
+    if isinstance(cached_paths, (list, tuple, set)):
+        return list(cached_paths)
+    return [cached_paths] if cached_paths else []
+
+
+
+def remember_cached_html(global_subject_index, subject_id, html_path):
+    """将新下载的HTML写回全局索引"""
+    if not global_subject_index or not subject_id:
+        return
+
+    cached_paths = get_indexed_html_paths(global_subject_index, subject_id)
+    if html_path not in cached_paths:
+        cached_paths.append(html_path)
+    global_subject_index[subject_id] = cached_paths
+
+
+
 def find_existing_html(type_dir, movie_name, url, subject_id="", global_subject_index=None):
     """查找已存在的可复用HTML，确保断点续传判断和命名规则一致"""
     subject_id = normalize_subject_id(subject_id) or extract_subject_id(url)
     if subject_id:
-        cached_paths = global_subject_index.get(subject_id, []) if global_subject_index else []
-        for cached_path in cached_paths:
+        for cached_path in get_indexed_html_paths(global_subject_index, subject_id):
             if is_html_file_usable(cached_path):
                 return cached_path
         matches = sorted(type_dir.glob(f"{subject_id}_*.html"))
@@ -126,8 +151,7 @@ def find_bad_html_target(type_dir, movie_name, url, subject_id="", global_subjec
             if not is_html_file_usable(match):
                 return match
 
-        cached_paths = global_subject_index.get(subject_id, []) if global_subject_index else []
-        for cached_path in cached_paths:
+        for cached_path in get_indexed_html_paths(global_subject_index, subject_id):
             if cached_path.exists() and not is_html_file_usable(cached_path):
                 return cached_path
 
@@ -196,7 +220,6 @@ def classify_html_page(html_text):
         "禁止访问",
         "异常请求",
         "验证码",
-        "登录豆瓣",
         "访问受限",
         "检测到有异常请求",
         "异常请求从你的IP发出",
@@ -205,15 +228,17 @@ def classify_html_page(html_text):
         if keyword in html_text:
             return "blocked", f"页面包含拦截提示：{keyword}"
 
-    invalid_keywords = ["页面不存在", "条目不存在"]
+    invalid_keywords = ["页面不存在", "条目不存在", "登录豆瓣"]
     for keyword in invalid_keywords:
         if keyword in html_text:
             return "invalid", f"页面包含无效提示：{keyword}"
 
     soup = BeautifulSoup(html_text, "html.parser")
     title = soup.title.get_text(strip=True) if soup.title else ""
-    if any(keyword in title for keyword in ["禁止访问", "访问受限", "异常请求", "登录豆瓣"]):
+    if any(keyword in title for keyword in ["禁止访问", "访问受限", "异常请求"]):
         return "blocked", f"页面标题异常：{title[:30] or '无标题'}"
+    if "登录豆瓣" in title:
+        return "invalid", f"页面标题异常：{title[:30] or '无标题'}"
     if "豆瓣" not in title:
         return "invalid", f"页面标题异常：{title[:30] or '无标题'}"
 
@@ -365,7 +390,7 @@ if __name__ == "__main__":
                     write_html_atomically(html_path, html_text)
 
                     if subject_id:
-                        global_subject_index[subject_id] = html_path
+                        remember_cached_html(global_subject_index, subject_id, html_path)
 
                     print(f"✅ [{idx + 1}/{len(df)}] 下载成功：{movie_name} -> {html_path.name}")
                     success_count += 1

@@ -3,6 +3,7 @@ import json
 import re
 import sys
 from pathlib import Path
+
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import config
@@ -10,31 +11,13 @@ import config
 import pandas as pd
 from bs4 import BeautifulSoup
 
-
-def extract_subject_id_from_url(url):
-    """从详情链接中提取豆瓣subject id"""
-    match = re.search(r"/subject/(\d+)/", str(url))
-    return match.group(1) if match else ""
-
-
-
-def normalize_subject_id(value):
-    """规范化subject_id，兼容Excel读取后的数字格式"""
-    if pd.isna(value):
-        return ""
-    text = str(value).strip()
-    if not text or text.lower() == "nan":
-        return ""
-    match = re.search(r"(\d+)", text)
-    return match.group(1) if match else text
-
+from src.utils_baidu import extract_subject_id_from_url, normalize_subject_id
 
 
 def extract_subject_id_from_filename(file_name):
     """从HTML文件名中提取豆瓣subject id"""
-    match = re.match(r"(\d+)_", file_name)
+    match = re.match(r"(\d+)_", str(file_name))
     return match.group(1) if match else ""
-
 
 
 def load_movie_json_ld(soup):
@@ -60,7 +43,6 @@ def load_movie_json_ld(soup):
     return {}
 
 
-
 def extract_person_names(person_data):
     """从JSON-LD人物字段中提取姓名"""
     if isinstance(person_data, dict):
@@ -69,7 +51,6 @@ def extract_person_names(person_data):
         names = [item.get("name", "") for item in person_data if isinstance(item, dict) and item.get("name")]
         return " / ".join(names)
     return ""
-
 
 
 def normalize_runtime(runtime_text):
@@ -86,7 +67,6 @@ def normalize_runtime(runtime_text):
     minutes = int(match.group(2) or 0)
     total_minutes = hours * 60 + minutes
     return f"{total_minutes}分钟" if total_minutes else text
-
 
 
 def extract_movie_info(html_file_path):
@@ -154,7 +134,7 @@ def extract_movie_info(html_file_path):
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("第4步：解析HTML并合并数据")
+    print("第6步：解析HTML并合并最终数据")
     print("=" * 50)
 
     parsed_data = []
@@ -187,7 +167,7 @@ if __name__ == "__main__":
     print(f"\n✅ 共解析 {len(df_parsed)} 条数据")
 
     excel_dfs = []
-    for excel_file in config.FILTERED_DIR.glob("china_*.xlsx"):
+    for excel_file in config.BAIDU_DIR.glob("china_*.xlsx"):
         df = pd.read_excel(excel_file)
         if "subject_id" not in df.columns:
             df["subject_id"] = ""
