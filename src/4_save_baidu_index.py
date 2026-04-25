@@ -34,8 +34,9 @@ import config
 import pandas as pd
 
 from src.utils_baidu import (
-    build_baidu_cache_path,
+    build_baidu_cache_write_path,
     build_pre_release_window,
+    classify_baidu_result,
     clean_baidu_query_title,
     extract_subject_id_from_url,
     find_existing_baidu_cache,
@@ -62,6 +63,37 @@ START_PARAM_NAMES = {"start_date", "start", "begin_date", "begin", "startdate", 
 END_PARAM_NAMES = {"end_date", "end", "stop_date", "stop", "enddate", "date_end", "to_date", "endtime", "etime"}
 COOKIE_PARAM_NAMES = {"cookie", "cookies", "ck"}
 AREA_PARAM_NAMES = {"area", "area_code", "region", "province"}
+
+
+def get_baidu_index_min_day():
+    min_date = parse_release_date(getattr(config, "BAIDU_INDEX_MIN_DATE", "2011-01-01"))
+    if min_date is None:
+        raise RuntimeError("BAIDU_INDEX_MIN_DATE 配置无效")
+    return min_date
+
+
+def is_unsupported_baidu_date_window(start_day, end_day):
+    min_day = get_baidu_index_min_day()
+    return start_day is not None and end_day is not None and start_day < min_day
+
+
+def is_bad_request_error(exc):
+    error_text = str(exc).lower()
+    return "10002" in error_text or "bad request" in error_text
+
+
+def materialize_baidu_result(raw_result):
+    if raw_result is None:
+        return []
+    if isinstance(raw_result, list):
+        return raw_result
+    if isinstance(raw_result, pd.DataFrame):
+        return raw_result.to_dict("records")
+    if isinstance(raw_result, dict):
+        return raw_result
+    if hasattr(raw_result, "__iter__") and not isinstance(raw_result, (str, bytes, bytearray)):
+        return list(raw_result)
+    return raw_result
 
 
 
@@ -192,7 +224,22 @@ def collect_daily_items(node, collected=None):
             collect_daily_items(item, collected)
         return collected
 
+    if hasattr(node, "__iter__") and not isinstance(node, (str, bytes, bytearray)):
+        for item in list(node):
+            collect_daily_items(item, collected)
+        return collected
+
     return collected
+
+
+
+def filter_baidu_raw_items(raw_items):
+    """优先保留 qdata 返回中的 all 日值"""
+    if not isinstance(raw_items, list):
+        return raw_items
+
+    all_items = [item for item in raw_items if isinstance(item, dict) and str(item.get("type", "") or "").strip().lower() == "all"]
+    return all_items if all_items else raw_items
 
 
 
@@ -466,6 +513,54 @@ def fetch_baidu_result(fetcher, query, start_date, end_date):
 
 
 
+def build_query_candidates(query_raw, query_clean):
+    candidates = []
+    for candidate in [query_clean, query_raw]:
+        text = str(candidate or "").strip()
+        if text and text not in candidates:
+            candidates.append(text)
+    return candidates
+
+
+
+def try_fetch_baidu_result(fetcher, query_candidates, start_date, end_date):
+    last_error = None
+    last_empty_result = None
+    for query_text in query_candidates:
+        try:
+            raw_result = fetch_baidu_result(fetcher, query_text, start_date, end_date)
+            raw_items = materialize_baidu_result(raw_result)
+            filtered_raw_items = filter_baidu_raw_items(raw_items)
+            if not collect_daily_items(filtered_raw_items):
+                last_empty_result = (query_text, raw_items)
+                continue
+            return query_text, raw_items, None
+        except Exception as exc:
+            last_error = exc
+    if last_empty_result is not None:
+        query_text, raw_items = last_empty_result
+        return query_text, raw_items, None
+    return "", None, last_error
+
+
+
+def run_baidu_preflight(fetcher):
+    query = config.BAIDU_INDEX_PREFLIGHT_QUERY
+    start_date = config.BAIDU_INDEX_PREFLIGHT_START_DATE
+    end_date = config.BAIDU_INDEX_PREFLIGHT_END_DATE
+    print(f"🔎 百度指数预检：{query} {start_date}~{end_date}")
+    try:
+        raw_result = fetch_baidu_result(fetcher, query, start_date, end_date)
+        raw_items = materialize_baidu_result(raw_result)
+        filtered_raw_items = filter_baidu_raw_items(raw_items)
+        extracted_count = len(collect_daily_items(filtered_raw_items))
+        if extracted_count <= 0:
+            raise RuntimeError("预检未提取到任何真实日期样本")
+    except Exception as exc:
+        raise RuntimeError(f"百度指数预检失败，请先检查 Cookie、qdata 或百度指数接口：{exc}") from exc
+    print(f"✅ 百度指数预检通过，提取样本 {extracted_count} 条")
+
+
 def evaluate_batch(batch_outcomes):
     if not batch_outcomes:
         return
@@ -490,6 +585,7 @@ if __name__ == "__main__":
     print_qdata_package_diagnostics()
     fetcher, fetcher_name, adapter_label = resolve_qdata_fetcher()
     print_fetcher_diagnostics(fetcher, fetcher_name, adapter_label)
+    run_baidu_preflight(fetcher)
 
     for excel_file in config.FILTERED_DIR.glob("china_*.xlsx"):
         movie_type = excel_file.stem.replace("china_", "")
@@ -507,6 +603,9 @@ if __name__ == "__main__":
         skip_count = 0
         fail_count = 0
         zero_count = 0
+        empty_count = 0
+        bad_request_count = 0
+        unsupported_date_count = 0
         missing_release_date_count = 0
         batch_outcomes = []
 
@@ -523,7 +622,7 @@ if __name__ == "__main__":
                 skip_count += 1
                 continue
 
-            cache_path = build_baidu_cache_path(type_dir, movie_name, subject_id)
+            cache_path = build_baidu_cache_write_path(type_dir, movie_name, subject_id)
             query_raw = movie_name
             query_clean = clean_baidu_query_title(movie_name)
             release_day = parse_release_date(row.get("上映时间", "") if hasattr(row, "get") else "")
@@ -549,37 +648,9 @@ if __name__ == "__main__":
 
             start_date = start_day.isoformat()
             end_date = end_day.isoformat()
-            try:
-                print(f"🔍 [{idx + 1}/{len(df)}] 正在抓取：{movie_name} | 查询词：{query_clean}")
-                raw_result = fetch_baidu_result(
-                    fetcher,
-                    query_clean,
-                    start_date,
-                    end_date,
-                )
-                daily_values = normalize_daily_values(raw_result, start_day, end_day)
-                cache_payload = build_cache_payload(
-                    subject_id,
-                    movie_name,
-                    query_raw,
-                    query_clean,
-                    release_day,
-                    start_day,
-                    end_day,
-                    daily_values,
-                    "ok",
-                    "",
-                )
-                write_json_atomically(cache_path, cache_payload)
-
-                if daily_values and all(float(item.get("value", 0)) == 0 for item in daily_values):
-                    zero_count += 1
-                    batch_outcomes.append("zero")
-                else:
-                    batch_outcomes.append("ok")
-                success_count += 1
-                print(f"✅ [{idx + 1}/{len(df)}] 缓存成功：{movie_name} -> {cache_path.name}")
-            except Exception as exc:
+            query_candidates = build_query_candidates(query_raw, query_clean)
+            if is_unsupported_baidu_date_window(start_day, end_day):
+                error_message = f"查询窗口早于百度指数最早支持日期 {config.BAIDU_INDEX_MIN_DATE}"
                 cache_payload = build_cache_payload(
                     subject_id,
                     movie_name,
@@ -589,13 +660,124 @@ if __name__ == "__main__":
                     start_day,
                     end_day,
                     [],
-                    "error",
-                    str(exc)[:300],
+                    "unsupported_date_range",
+                    error_message,
                 )
+                cache_payload["百度指数原始提取样本数"] = 0
                 write_json_atomically(cache_path, cache_payload)
-                fail_count += 1
-                batch_outcomes.append("error")
-                print(f"❌ [{idx + 1}/{len(df)}] 抓取失败：{movie_name} - {str(exc)[:120]}")
+                unsupported_date_count += 1
+                batch_outcomes.append("skip")
+                print(f"⏩ [{idx + 1}/{len(df)}] 日期范围不支持，已写入占位缓存：{movie_name} - {error_message}")
+                continue
+
+            try:
+                print(f"🔍 [{idx + 1}/{len(df)}] 正在抓取：{movie_name} | 查询词候选：{' -> '.join(query_candidates)}")
+                used_query, raw_items, fetch_error = try_fetch_baidu_result(
+                    fetcher,
+                    query_candidates,
+                    start_date,
+                    end_date,
+                )
+                if raw_items is None:
+                    raise fetch_error if fetch_error is not None else RuntimeError("百度指数请求未返回结果")
+
+                filtered_raw_items = filter_baidu_raw_items(raw_items)
+                extracted_items = collect_daily_items(filtered_raw_items)
+                extracted_count = len(extracted_items)
+                expected_dates = iter_date_strings(start_day, end_day)
+                daily_values = normalize_daily_values(filtered_raw_items, start_day, end_day)
+                result_type, result_reason = classify_baidu_result(
+                    daily_values,
+                    expected_dates=expected_dates,
+                    extracted_count=extracted_count,
+                )
+
+                if result_type == "empty":
+                    empty_count += 1
+                    batch_outcomes.append("empty")
+                    cache_payload = build_cache_payload(
+                        subject_id,
+                        movie_name,
+                        query_raw,
+                        used_query,
+                        release_day,
+                        start_day,
+                        end_day,
+                        [],
+                        "empty_index",
+                        result_reason,
+                    )
+                    cache_payload["百度指数原始提取样本数"] = extracted_count
+                    write_json_atomically(cache_path, cache_payload)
+                    print(f"⏩ [{idx + 1}/{len(df)}] 无可用指数样本，已写入占位缓存：{movie_name} - {result_reason} | 实际查询词：{used_query}")
+                elif result_type == "invalid":
+                    fail_count += 1
+                    batch_outcomes.append("error")
+                    cache_payload = build_cache_payload(
+                        subject_id,
+                        movie_name,
+                        query_raw,
+                        used_query,
+                        release_day,
+                        start_day,
+                        end_day,
+                        daily_values,
+                        "invalid",
+                        result_reason,
+                    )
+                    cache_payload["百度指数原始提取样本数"] = extracted_count
+                    write_json_atomically(cache_path, cache_payload)
+                    print(f"❌ [{idx + 1}/{len(df)}] 数据无效：{movie_name} - {result_reason} | 实际查询词：{used_query}")
+                else:
+                    cache_payload = build_cache_payload(
+                        subject_id,
+                        movie_name,
+                        query_raw,
+                        used_query,
+                        release_day,
+                        start_day,
+                        end_day,
+                        daily_values,
+                        "ok",
+                        "",
+                    )
+                    cache_payload["百度指数原始提取样本数"] = extracted_count
+                    write_json_atomically(cache_path, cache_payload)
+
+                    if daily_values and all(float(item.get("value", 0)) == 0 for item in daily_values):
+                        zero_count += 1
+                        batch_outcomes.append("zero")
+                        success_count += 1
+                        print(f"✅ [{idx + 1}/{len(df)}] 缓存成功（全0有效）：{movie_name} -> {cache_path.name} | 实际查询词：{used_query}")
+                    else:
+                        batch_outcomes.append("ok")
+                        success_count += 1
+                        print(f"✅ [{idx + 1}/{len(df)}] 缓存成功：{movie_name} -> {cache_path.name} | 实际查询词：{used_query}")
+            except Exception as exc:
+                status = "bad_request" if is_bad_request_error(exc) else "cookie_or_api_error"
+                error_message = str(exc)[:300]
+                cache_payload = build_cache_payload(
+                    subject_id,
+                    movie_name,
+                    query_raw,
+                    query_clean,
+                    release_day,
+                    start_day,
+                    end_day,
+                    [],
+                    status,
+                    error_message,
+                )
+                cache_payload["百度指数原始提取样本数"] = 0
+                write_json_atomically(cache_path, cache_payload)
+                if status == "bad_request":
+                    bad_request_count += 1
+                    batch_outcomes.append("bad_request")
+                    print(f"⏩ [{idx + 1}/{len(df)}] 请求被拒绝，已写入诊断缓存：{movie_name} - {error_message}")
+                else:
+                    fail_count += 1
+                    batch_outcomes.append("error")
+                    print(f"❌ [{idx + 1}/{len(df)}] 抓取失败：{movie_name} - {error_message[:120]}")
 
             if batch_outcomes and len(batch_outcomes) % config.BATCH_SIZE == 0:
                 evaluate_batch(batch_outcomes[-config.BATCH_SIZE:])
@@ -605,5 +787,7 @@ if __name__ == "__main__":
         evaluate_batch(batch_outcomes[-config.BATCH_SIZE:])
         print(
             f"✅ {type_name} 完成：新增成功 {success_count} 部，已跳过 {skip_count} 部，失败 {fail_count} 部，"
-            f"其中全 0 成功 {zero_count} 部，缺失上映日期 {missing_release_date_count} 部"
+            f"其中全 0 成功 {zero_count} 部，空样本 {empty_count} 部，"
+            f"bad request {bad_request_count} 部，日期不支持 {unsupported_date_count} 部，"
+            f"缺失上映日期 {missing_release_date_count} 部"
         )

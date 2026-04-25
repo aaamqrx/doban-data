@@ -26,6 +26,16 @@ DIAGNOSTIC_COLUMNS = [
     "百度指数非空天数",
 ]
 
+NO_FEATURE_STATUSES = {
+    "missing_release_date",
+    "error",
+    "invalid",
+    "unsupported_date_range",
+    "empty_index",
+    "bad_request",
+    "cookie_or_api_error",
+}
+
 
 def normalize_numeric_value(value):
     if value is None:
@@ -78,22 +88,11 @@ def build_baidu_features(cache_data):
     sample_count = len(daily_values)
     non_zero_days = count_non_zero_days(daily_values)
 
-    if status == "missing_release_date":
+    if status in NO_FEATURE_STATUSES:
         return {
             config.BAIDU_INDEX_OUTPUT_FIELD: pd.NA,
-            "百度指数状态": "missing_release_date",
-            "百度指数错误信息": error_message or "上映日期缺失或无法解析",
-            "百度指数查询词原始": query_raw,
-            "百度指数查询词清洗后": query_clean,
-            "百度指数样本天数": sample_count,
-            "百度指数非空天数": non_zero_days,
-        }
-
-    if status == "error":
-        return {
-            config.BAIDU_INDEX_OUTPUT_FIELD: pd.NA,
-            "百度指数状态": "error",
-            "百度指数错误信息": error_message,
+            "百度指数状态": status,
+            "百度指数错误信息": error_message or "百度指数结果不可用于特征计算",
             "百度指数查询词原始": query_raw,
             "百度指数查询词清洗后": query_clean,
             "百度指数样本天数": sample_count,

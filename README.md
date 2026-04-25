@@ -117,17 +117,20 @@ movie_prediction_data/
 
 功能：
 - 读取 `data/filtered/china_*.xlsx`
+- 批量抓取前按 `config.py` 中的预检关键词与日期窗口请求一次；失败则退出，避免 Cookie 失效时写满失败缓存
+- 上映前 7 天窗口早于 `BAIDU_INDEX_MIN_DATE` 时跳过请求，写入 `unsupported_date_range`（该日期为可配置的经验阈值，可按实测调整）
 - 基于 `上映时间` 计算上映前 7 天窗口
+- 查询词按「清洗后 → 原始片名」依次尝试；`qdata` 返回生成器时会在候选词循环内消费，保证回退生效
 - 使用 `qdata` 拉取百度指数日级数据
 - 将结果缓存到 `baidu_cache/<类型>/`
-- 缓存中保留：原始查询词、清洗后查询词、日期窗口、日值列表、状态、错误信息
+- 缓存中保留：原始查询词、清洗后查询词、日期窗口、日值列表、状态、错误信息、原始提取样本数等；失败类情况会写入 `empty_index`、`bad_request`、`cookie_or_api_error` 等诊断状态
 
 ### Step 5. 解析百度指数缓存
 脚本：[src/5_parse_baidu_index.py](src/5_parse_baidu_index.py)
 
 功能：
-- 读取 `baidu_cache/<类型>/*.json`
-- 生成 `上映前7天百度搜索指数均值`
+- 读取 `data/filtered/china_*.xlsx`，并为每行匹配 `baidu_cache/<类型>/` 下对应 JSON
+- 生成 `上映前7天百度搜索指数均值`（仅当缓存状态为可用于建模时；`unsupported_date_range`、`empty_index`、`bad_request` 等终态下均值为空）
 - 同时保留若干排障列：
   - `百度指数状态`
   - `百度指数错误信息`
@@ -233,7 +236,7 @@ pip install -r requirements.txt
 - 中国地区关键词（大陆 / 香港 / 台湾）
 - 分页大小
 - HTML 下载延时、批次暂停与风控退避阈值
-- 百度指数 Cookie、地区、重试与预警阈值
+- 百度指数 Cookie、`BAIDU_INDEX_MIN_DATE`、预检关键词与日期窗口、地区、重试与预警阈值
 - 数据目录与缓存目录
 - 豆瓣请求头与 Cookie
 
@@ -266,7 +269,7 @@ pip install requests pandas openpyxl beautifulsoup4 chinesecalendar qdata
 ## 使用注意事项
 
 1. **Cookie 可能过期**  
-   如果豆瓣或百度指数请求异常，优先检查 [config.py](config.py) 中对应站点的 Cookie。
+   如果豆瓣或百度指数请求异常，优先检查 [config.py](config.py) 中对应站点的 Cookie。第 4 步开头有百度指数预检，预检失败时应先更新百度 Cookie 或检查网络与 `qdata`。
 
 2. **榜单接口不是豆瓣全站电影库**  
    即使遍历全部评分区间，得到的数据仍然受豆瓣榜单接口返回范围限制。
