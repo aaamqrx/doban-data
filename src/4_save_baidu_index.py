@@ -82,6 +82,20 @@ def is_bad_request_error(exc):
     return "10002" in error_text or "bad request" in error_text
 
 
+def is_request_limited_error(exc):
+    """判断 qdata/百度指数接口是否返回请求频率限制。"""
+    error_text = str(exc)
+    lowered_text = error_text.lower()
+    limited_markers = [
+        "request_limited",
+        "rate limit",
+        "too frequent",
+        "请求过于频繁",
+        "降低请求频率",
+    ]
+    return any(marker in lowered_text or marker in error_text for marker in limited_markers)
+
+
 def materialize_baidu_result(raw_result):
     if raw_result is None:
         return []
@@ -113,6 +127,17 @@ def write_json_atomically(cache_path, data):
 def sleep_baidu_delay():
     time.sleep(random.uniform(config.BAIDU_INDEX_DELAY_MIN, config.BAIDU_INDEX_DELAY_MAX))
 
+
+def sleep_baidu_batch_pause():
+    pause_seconds = random.uniform(config.BATCH_PAUSE_MIN, config.BATCH_PAUSE_MAX)
+    print(f"⏸️ 百度指数批次暂停 {pause_seconds:.0f} 秒，降低风控概率...")
+    time.sleep(pause_seconds)
+
+
+def sleep_baidu_block_pause():
+    pause_seconds = random.uniform(config.BLOCK_PAUSE_MIN, config.BLOCK_PAUSE_MAX)
+    print(f"⏸️ 连续命中百度指数限流，暂停 {pause_seconds:.0f} 秒后继续...")
+    time.sleep(pause_seconds)
 
 
 def normalize_baidu_value(value):
@@ -566,7 +591,8 @@ def evaluate_batch(batch_outcomes):
         return
 
     total = len(batch_outcomes)
-    error_ratio = batch_outcomes.count("error") / total
+    error_count = sum(1 for outcome in batch_outcomes if outcome in {"error", "request_limited"})
+    error_ratio = error_count / total
     zero_ratio = batch_outcomes.count("zero") / total
 
     if error_ratio >= config.BAIDU_INDEX_ERROR_WARN_THRESHOLD:
@@ -605,8 +631,11 @@ if __name__ == "__main__":
         zero_count = 0
         empty_count = 0
         bad_request_count = 0
+        request_limited_count = 0
         unsupported_date_count = 0
         missing_release_date_count = 0
+        real_request_count = 0
+        consecutive_limited = 0
         batch_outcomes = []
 
         for idx, row in df.iterrows():
@@ -644,6 +673,7 @@ if __name__ == "__main__":
                 write_json_atomically(cache_path, cache_payload)
                 print(f"⏩ [{idx + 1}/{len(df)}] 上映日期缺失，已写入占位缓存：{movie_name}")
                 missing_release_date_count += 1
+                consecutive_limited = 0
                 continue
 
             start_date = start_day.isoformat()
@@ -667,8 +697,13 @@ if __name__ == "__main__":
                 write_json_atomically(cache_path, cache_payload)
                 unsupported_date_count += 1
                 batch_outcomes.append("skip")
+                consecutive_limited = 0
                 print(f"⏩ [{idx + 1}/{len(df)}] 日期范围不支持，已写入占位缓存：{movie_name} - {error_message}")
                 continue
+
+            if real_request_count > 0 and real_request_count % config.BATCH_SIZE == 0:
+                sleep_baidu_batch_pause()
+            real_request_count += 1
 
             try:
                 print(f"🔍 [{idx + 1}/{len(df)}] 正在抓取：{movie_name} | 查询词候选：{' -> '.join(query_candidates)}")
@@ -710,6 +745,7 @@ if __name__ == "__main__":
                     cache_payload["百度指数原始提取样本数"] = extracted_count
                     write_json_atomically(cache_path, cache_payload)
                     print(f"⏩ [{idx + 1}/{len(df)}] 无可用指数样本，已写入占位缓存：{movie_name} - {result_reason} | 实际查询词：{used_query}")
+                    consecutive_limited = 0
                 elif result_type == "invalid":
                     fail_count += 1
                     batch_outcomes.append("error")
@@ -728,6 +764,7 @@ if __name__ == "__main__":
                     cache_payload["百度指数原始提取样本数"] = extracted_count
                     write_json_atomically(cache_path, cache_payload)
                     print(f"❌ [{idx + 1}/{len(df)}] 数据无效：{movie_name} - {result_reason} | 实际查询词：{used_query}")
+                    consecutive_limited = 0
                 else:
                     cache_payload = build_cache_payload(
                         subject_id,
@@ -753,8 +790,14 @@ if __name__ == "__main__":
                         batch_outcomes.append("ok")
                         success_count += 1
                         print(f"✅ [{idx + 1}/{len(df)}] 缓存成功：{movie_name} -> {cache_path.name} | 实际查询词：{used_query}")
+                    consecutive_limited = 0
             except Exception as exc:
-                status = "bad_request" if is_bad_request_error(exc) else "cookie_or_api_error"
+                request_limited = is_request_limited_error(exc)
+                status = (
+                    "request_limited"
+                    if request_limited
+                    else ("bad_request" if is_bad_request_error(exc) else "cookie_or_api_error")
+                )
                 error_message = str(exc)[:300]
                 cache_payload = build_cache_payload(
                     subject_id,
@@ -774,10 +817,24 @@ if __name__ == "__main__":
                     bad_request_count += 1
                     batch_outcomes.append("bad_request")
                     print(f"⏩ [{idx + 1}/{len(df)}] 请求被拒绝，已写入诊断缓存：{movie_name} - {error_message}")
+                    consecutive_limited = 0
+                elif status == "request_limited":
+                    fail_count += 1
+                    request_limited_count += 1
+                    consecutive_limited += 1
+                    batch_outcomes.append("request_limited")
+                    print(f"❌ [{idx + 1}/{len(df)}] 百度指数请求被限流：{movie_name} - {error_message[:120]}")
+
+                    if consecutive_limited >= config.STOP_BLOCKED_THRESHOLD:
+                        print("🛑 连续多次命中百度指数限流，建议更新 Cookie 或稍后再继续运行。")
+                        break
+                    if consecutive_limited >= config.BLOCKED_THRESHOLD:
+                        sleep_baidu_block_pause()
                 else:
                     fail_count += 1
                     batch_outcomes.append("error")
                     print(f"❌ [{idx + 1}/{len(df)}] 抓取失败：{movie_name} - {error_message[:120]}")
+                    consecutive_limited = 0
 
             if batch_outcomes and len(batch_outcomes) % config.BATCH_SIZE == 0:
                 evaluate_batch(batch_outcomes[-config.BATCH_SIZE:])
@@ -788,6 +845,6 @@ if __name__ == "__main__":
         print(
             f"✅ {type_name} 完成：新增成功 {success_count} 部，已跳过 {skip_count} 部，失败 {fail_count} 部，"
             f"其中全 0 成功 {zero_count} 部，空样本 {empty_count} 部，"
-            f"bad request {bad_request_count} 部，日期不支持 {unsupported_date_count} 部，"
+            f"bad request {bad_request_count} 部，限流 {request_limited_count} 部，日期不支持 {unsupported_date_count} 部，"
             f"缺失上映日期 {missing_release_date_count} 部"
         )

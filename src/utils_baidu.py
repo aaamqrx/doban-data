@@ -159,7 +159,7 @@ def is_baidu_cache_usable(cache_path):
         return False
 
     status = str(cache_data.get("百度指数状态", "")).strip()
-    if status in {"error", "invalid"}:
+    if status in {"error", "invalid", "request_limited"}:
         return False
     if status in BAIDU_TERMINAL_PLACEHOLDER_STATUSES:
         return True
